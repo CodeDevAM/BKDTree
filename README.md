@@ -1,8 +1,10 @@
 # BKDTree
 
-BKDTree offers a simple and high performant implementation of a growing only BKDTree and a static KDTree for C# and .NET. 
+BKDTree offers a simple and high performant implementation of a growing only `BKDTree<T>` and a static `KDTree<T>` for C# and .NET. 
 
 A BKDTree and an KDTree allow storing any queying of multidimensional data. Non of these support a method for removing items.
+
+For nearest neighbor queries there are dediated variants like `MetricBKDTree<T>` and `MetricKDTree<T>`. As nearest neighbor queries require to calculate euclidean distance between values `T` must implement `IMetricTreeItem<in T>`.
 
 <img src="./icon.png" width="256" height="256"/>
 
@@ -13,6 +15,15 @@ Items of type `T` that shall be stored in a `BKDTree<T>` or a `KDTree<T>` must i
 public interface ITreeItem<in T>
 {
     int CompareDimensionTo(T other, int dimension);
+}
+```
+
+For nearest neighbor queries there are dediated variants `MetricBKDTree<T>` and `MetricKDTree<T>` while `T` must implement `IMetricTreeItem<in T>` to allow calculation of euclidean distance between values.
+
+```Csharp
+public interface IMetricTreeItem<in T> : ITreeItem<T>
+{
+    double GetDimension(int dimension);
 }
 ```
 

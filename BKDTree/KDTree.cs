@@ -562,4 +562,128 @@ public class KDTree<T> where T : ITreeItem<T>
 
         return false;
     }
+
+}
+
+[DebuggerDisplay("Count: {Count}")]
+public class MetricKDTree<T> : KDTree<T> where T : IMetricTreeItem<T>
+{
+    public MetricKDTree(int dimensionCount, IEnumerable<T> values) : base(dimensionCount, values)
+    {
+    }
+
+    internal MetricKDTree(int dimensionCount, T[][] values, DimensionalComparer<T>[] comparers) : base(dimensionCount, values, comparers)
+    {
+    }
+
+    /// <summary>
+    /// Gets the value with the lowest euclidean distance between it and the given <paramref name="value"/>.
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="neighbor"></param>
+    /// <param name="squaredDistance"></param>
+    /// <returns>true if a neighbor was found otherwise false</returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    public bool GetNearestNeighbor(T value, out T neighbor, out double squaredDistance)
+    {
+        if (value is null)
+        {
+            throw new ArgumentNullException(nameof(value));
+        }
+
+        Option<T> currentNeighbor = default;
+        double? minSqaredDistance = default;
+
+        GetNearestNeighbor(ref value, ref currentNeighbor, ref minSqaredDistance, 0, Count - 1, 0);
+
+        neighbor = currentNeighbor.Value;
+        squaredDistance = minSqaredDistance.HasValue ? minSqaredDistance.Value : default;
+        bool result = currentNeighbor.HasValue;
+
+        return result;
+    }
+
+    internal void GetNearestNeighbor(ref T value, ref Option<T> neighbor, ref double? minSqaredDistance, int leftIndex, int rightIndex, int dimension)
+    {
+        int midIndex = (rightIndex + leftIndex) / 2;
+
+        ref T midValue = ref Values[midIndex];
+        bool dirty = Dirties[midIndex];
+
+        double squaredDistance = GetSquaredDistance(ref value, ref midValue, DimensionCount);
+
+        if (!minSqaredDistance.HasValue || squaredDistance < minSqaredDistance.Value)
+        {
+            neighbor = midValue;
+            minSqaredDistance = squaredDistance;
+        }
+
+        int nextDimension = (dimension + 1) % DimensionCount;
+        int comparisonResult = value.CompareDimensionTo(midValue, dimension);
+
+        bool wasRight = false;
+        bool forceLeft = false;
+
+        if (comparisonResult >= 0)
+        {
+            int nextLeftIndex = midIndex + 1;
+            int nextRightIndex = rightIndex;
+
+            if (nextRightIndex >= nextLeftIndex)
+            {
+                GetNearestNeighbor(ref value, ref neighbor, ref minSqaredDistance, nextLeftIndex, nextRightIndex, nextDimension);
+
+                wasRight = true;
+            }
+
+            double limitSquaredDistance = midValue.GetDimension(dimension) - value.GetDimension(dimension);
+            limitSquaredDistance *= limitSquaredDistance;
+
+            if (!minSqaredDistance.HasValue || limitSquaredDistance < minSqaredDistance.Value)
+            {
+                forceLeft = true;
+            }
+        }
+
+        if (comparisonResult < 0 || (dirty && comparisonResult == 0) || forceLeft)
+        {
+            int nextLeftIndex = leftIndex;
+            int nextRightIndex = midIndex - 1;
+
+            if (nextRightIndex >= nextLeftIndex)
+            {
+                GetNearestNeighbor(ref value, ref neighbor, ref minSqaredDistance, nextLeftIndex, nextRightIndex, nextDimension);
+            }
+
+            if (!wasRight)
+            {
+                double squaredDistanceToLimit = midValue.GetDimension(dimension) - value.GetDimension(dimension);
+                squaredDistanceToLimit *= squaredDistanceToLimit;
+
+                if (!minSqaredDistance.HasValue || squaredDistanceToLimit < minSqaredDistance.Value)
+                {
+                    nextLeftIndex = midIndex + 1;
+                    nextRightIndex = rightIndex;
+
+                    if (nextRightIndex >= nextLeftIndex)
+                    {
+                        GetNearestNeighbor(ref value, ref neighbor, ref minSqaredDistance, nextLeftIndex, nextRightIndex, nextDimension);
+                    }
+                }
+            }
+        }
+    }
+
+    public static double GetSquaredDistance(ref T source, ref T target, int dimensionCount)
+    {
+        double result = 0;
+        for (int dimension = 0; dimension < dimensionCount; dimension++)
+        {
+            double diff = target.GetDimension(dimension) - source.GetDimension(dimension);
+
+            result += diff * diff;
+        }
+
+        return result;
+    }
 }

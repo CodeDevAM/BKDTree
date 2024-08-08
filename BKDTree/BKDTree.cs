@@ -18,6 +18,8 @@ public class BKDTree<T> where T : ITreeItem<T>
 
     internal readonly DimensionalComparer<T>[] Comparers;
 
+    public bool IsMetric { get; } = typeof(IMetricTreeItem<T>).IsAssignableFrom(typeof(T));
+
     public long Count { get; private set; }
 
     public BKDTree(int dimensionCount, int blockSize = DefaultBlockSize)
@@ -42,6 +44,12 @@ public class BKDTree<T> where T : ITreeItem<T>
         {
             Comparers[dimension] = new(dimension);
         }
+    }
+
+    protected virtual KDTree<T> CreateNewTree(T[][] values)
+    {
+        KDTree<T> result = new(DimensionCount, values, Comparers);
+        return result;
     }
 
     /// <summary>
@@ -86,7 +94,7 @@ public class BKDTree<T> where T : ITreeItem<T>
                 values[i + 1] = Trees[i].Values;
             }
 
-            KDTree<T> newTree = new(DimensionCount, values, Comparers);
+            KDTree<T> newTree = CreateNewTree(values);
 
             if (emptyIndex >= Trees.Length)
             {
@@ -462,5 +470,67 @@ public class BKDTree<T> where T : ITreeItem<T>
 
         return false;
     }
+}
 
+[DebuggerDisplay("Count: {Count}")]
+public class MetricBKDTree<T> : BKDTree<T> where T : IMetricTreeItem<T>
+{
+    public MetricBKDTree(int dimensionCount, int blockSize = DefaultBlockSize) : base(dimensionCount, blockSize)
+    {
+    }
+
+    protected override KDTree<T> CreateNewTree(T[][] values)
+    {
+        KDTree<T> result = new MetricKDTree<T>(DimensionCount, values, Comparers);
+        return result;
+    }
+
+    /// <summary>
+    /// Gets the value with the lowest euclidean distance between it and the given <paramref name="value"/>.
+    /// </summary>
+    /// <param name="value"></param>
+    /// <param name="neighbor"></param>
+    /// <param name="squaredDistance"></param>
+    /// <returns>true if a neighbor was found otherwise false</returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    public bool GetNearestNeighbor(T value, out T neighbor, out double squaredDistance)
+    {
+        if (value is null)
+        {
+            throw new ArgumentNullException(nameof(value));
+        }
+
+        Option<T> currentNeighbor = default;
+        double? minSqaredDistance = default;
+
+        for (int i = 0; i < BaseBlockCount; i++)
+        {
+            ref T currentValue = ref BaseBlock[i];
+
+            double distance = MetricKDTree<T>.GetSquaredDistance(ref value, ref currentValue, DimensionCount);
+
+            if (!minSqaredDistance.HasValue || distance < minSqaredDistance.Value)
+            {
+                currentNeighbor = currentValue;
+                minSqaredDistance = distance;
+            }
+        }
+
+        for (int i = 0; i < Trees.Length; i++)
+        {
+            MetricKDTree<T> tree = Trees[i] as MetricKDTree<T>;
+            if (tree is null)
+            {
+                continue;
+            }
+
+            tree.GetNearestNeighbor(ref value, ref currentNeighbor, ref minSqaredDistance, 0, tree.Count - 1, 0);
+        }
+
+        neighbor = currentNeighbor.Value;
+        squaredDistance = minSqaredDistance.HasValue ? minSqaredDistance.Value : default;
+        bool result = currentNeighbor.HasValue;
+
+        return result;
+    }
 }
